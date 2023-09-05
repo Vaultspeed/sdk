@@ -33,8 +33,8 @@ create table if not exists moto_sales.customers
     last_name varchar(50),
     birthdate date,
     gender char(8),
-    customer_invoice_address_id numeric(16) constraint moto_cust_inv_adr_fk references addresses,
-    customer_ship_to_address_id numeric(16) constraint moto_cust_shto_adr_fk references addresses,
+    customer_invoice_address_id numeric(16) constraint moto_cust_inv_adr_fk references moto_sales.addresses,
+    customer_ship_to_address_id numeric(16) constraint moto_cust_shto_adr_fk references moto_sales.addresses,
     update_user varchar(30),
     update_timestamp timestamp not null
 );
@@ -56,13 +56,14 @@ create table if not exists moto_sales.moto_parts
     part_number varchar(50) not null,
     part_language_code varchar(10),
     update_user varchar(30),
-    update_timestamp timestamp not null, constraint moto_parts_uk unique (part_number, part_language_code)
+    update_timestamp timestamp not null,
+    constraint moto_parts_uk unique (part_number, part_language_code)
 );
 
 create table if not exists moto_sales.moto_products
 (
     product_id numeric(16) not null constraint moto_products_pk primary key,
-    replacement_product_id numeric(16) constraint moto_prod_repl_prod_fk references moto_products,
+    replacement_product_id numeric(16) constraint moto_prod_repl_prod_fk references moto_sales.moto_products,
     product_cc numeric(16),
     product_et_code char(10),
     product_part_code varchar(50),
@@ -78,14 +79,15 @@ on moto_sales.moto_products (product_cc, product_et_code, product_part_code);
 create table if not exists moto_sales.invoice_lines
 (
     invoice_line_number numeric(16) not null,
-    invoice_number numeric(16) not null constraint moto_inv_lin_inv_fk references invoices,
-    product_id numeric(16) constraint moto_invln_prod_fk references moto_products,
-    part_id numeric(16) constraint invoice_lines_parts_fk references moto_parts,
+    invoice_number numeric(16) not null constraint moto_inv_lin_inv_fk references moto_sales.invoices,
+    product_id numeric(16) constraint moto_invln_prod_fk references moto_sales.moto_products,
+    part_id numeric(16) constraint invoice_lines_parts_fk references moto_sales.moto_parts,
     amount numeric(14, 2),
     quantity numeric(12),
     unit_price numeric(14, 2),
     update_user varchar(30),
-    update_timestamp timestamp not null, constraint moto_invoice_lines_pk primary key (invoice_number, invoice_line_number)
+    update_timestamp timestamp not null,
+    constraint moto_invoice_lines_pk primary key (invoice_number, invoice_line_number)
 );
 
 create table if not exists moto_sales.product_feature_class
@@ -110,7 +112,7 @@ create table if not exists moto_sales.product_feature_cat
 create table if not exists moto_sales.product_features
 (
     product_feature_id integer not null constraint moto_product_features_pk primary key,
-    product_feature_cat_id integer constraint product_features_fk references product_feature_cat,
+    product_feature_cat_id integer constraint product_features_fk references moto_sales.product_feature_cat,
     product_feature_code varchar(20),
     product_feature_language_code varchar(10),
     product_feature_description varchar(60),
@@ -121,10 +123,11 @@ create table if not exists moto_sales.product_features
 create table if not exists moto_sales.product_feat_class_rel
 (
     product_feature_id integer,
-    product_id numeric(16) constraint product_feat_class_rel_prod_fk references moto_products,
+    product_id numeric(16) constraint product_feat_class_rel_prod_fk references moto_sales.moto_products,
     product_feature_class_id numeric(16),
     update_user varchar(30),
-    update_timestamp timestamp not null, constraint product_feat_class_rel_uk unique (product_feature_id, product_id, product_feature_class_id)
+    update_timestamp timestamp not null,
+    constraint product_feat_class_rel_uk unique (product_feature_id, product_id, product_feature_class_id)
 );
 
 create table if not exists moto_sales.codes_to_language
@@ -133,7 +136,8 @@ create table if not exists moto_sales.codes_to_language
     language_code varchar(10) not null,
     description varchar(512),
     update_user varchar(30),
-    update_timestamp timestamp not null, constraint codes_to_language_pk primary key (code, language_code)
+    update_timestamp timestamp not null,
+    constraint codes_to_language_pk primary key (code, language_code)
 );
 
 create table if not exists moto_sales.payments
@@ -152,12 +156,13 @@ create table if not exists moto_sales.cust_addresses
     address_number numeric(16),
     address_type varchar(3),
     update_user varchar(30),
-    update_timestamp timestamp not null, constraint priv_cust_addresses_rel_uk unique (customer_number, address_number, address_type)
+    update_timestamp timestamp not null,
+    constraint priv_cust_addresses_rel_uk unique (customer_number, address_number, address_type)
 );
 
 create table if not exists moto_sales.product_sensors
 (
-    product_number numeric(16) constraint product_sensors_products_fk references moto_products,
+    product_number numeric(16) constraint product_sensors_products_fk references moto_sales.moto_products,
     vehicle_number varchar(30) not null,
     sensor varchar(20),
     sensor_value numeric(14, 2),
