@@ -15,7 +15,7 @@ def main(project: str, csv_path: Path):
 
     p = system.get_project(project)
 
-    with open(csv_path) as csvfile:
+    with open(csv_path, 'w', newline='') as csvfile:
         writer = csv.writer(csvfile, delimiter=",")
         header = ["name", "value", "type", "description"]
         writer.writerow(header)
@@ -34,10 +34,8 @@ if __name__ == "__main__":
         help="Name of the Project.",
     )
     parser.add_argument(
-        "CSV path",
+        "csv_path",
         help="path of the CSV file to export to.",
-        dest="csv_path",
-        action="store",
         type=Path
     )
     args = parser.parse_args()
