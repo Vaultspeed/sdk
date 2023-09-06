@@ -117,7 +117,15 @@ def generate_code(system: System, project_name: str, dv_name: str, generation_ty
 def main():
     parser = argparse.ArgumentParser(
         prog="Generate",
-        description="Generate code for a certain data vault",
+        description="""
+            This script can generate and deploy all the code in 1 go (DDL + ETL + FMC).
+            You have to pass a project, a data vault and an ETL language.
+            Optionally you can specify a DV and/or BV release, if no releases are specified, then the last one will be used.
+            The other options are to provide a path, this will cause the code to be downloaded to that path after generation, and a link, 
+            if a link is specified, then it will be used to deploy the generated code via the agent.
+            
+            If there is a production release, then the script will use delta generations starting from the latest production release.
+        """,
         epilog=""
     )
     parser.add_argument(

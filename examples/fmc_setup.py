@@ -9,6 +9,11 @@ from vaultspeed_sdk.system import System
 import env as env
 
 """
+This script can create FMC flows for a Data Vault, this is useful when you have a lot of sources, 
+so that you don't have to create an init and incr flow for each of them.
+"""
+
+"""
  Preparation
 """
 logging.basicConfig(level=logging.INFO)

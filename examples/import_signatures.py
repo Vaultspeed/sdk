@@ -52,7 +52,22 @@ def main(project: str, dv: str, csv_path: Path, dv_release_number: str = None, b
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="import signatures",
-        description="Upload object and attribute signatures from a csv file",
+        description="""
+        This script can import signature object and attribute assignments from a CSV.
+        As input, provide a project, DV, and optionally a DV and BV release (otherwise the latest is used) as well as the path to 
+        a directory containing a object_signatures.csv and attribute_signatures.csv file.
+        
+        object_signatures.csv should have 2 columns:
+        - object_name
+        - signature_name
+        
+        attribute_signatures.csv should have 3 columns:
+        - object_name
+        - attribute_name
+        - signature_name
+        
+        The script will create any signatures that don't exist yet, and then assign them to the given attributes and object.
+        """,
         epilog=""
     )
     parser.add_argument(
@@ -69,7 +84,8 @@ if __name__ == "__main__":
              "The object signatures should be stored in a CSV file called 'object_signatures.csv', "
              "where the first column is the object name, and the second column the signature object name."
              "The object signatures should be stored in a CSV file called 'attribute_signatures.csv', "
-             "where the first column is the object name, the second column is the attribute name, and the third column the signature attribute name.",
+             "where the first column is the object name, the second column is the attribute name, "
+             "and the third column the signature attribute name.",
         dest="csv_path",
         action="store",
         type=Path

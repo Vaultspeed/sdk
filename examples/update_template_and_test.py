@@ -57,7 +57,11 @@ def main(project: str, dv: str, template_path: Path, object_name: str, generatio
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         prog="template test",
-        description="Update a template and test it",
+        description="""
+        This script uploads a new version of a template and executes a test generation for a specific object.
+        It also contains an explanation for how this can be integrated into VSCode, so that it can quickly be tested 
+        while editing a template file there.
+        """,
         epilog=""
     )
     parser.add_argument(
