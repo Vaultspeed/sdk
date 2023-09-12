@@ -4,8 +4,7 @@ import os
 from pathlib import Path
 from typing import List
 
-from exceptions.internal_server_error import InternalServerError
-from models.util import get_last
+from vaultspeed_sdk.exceptions.internal_server_error import InternalServerError
 from vaultspeed_sdk.client import Client, UserPasswordAuthentication
 from vaultspeed_sdk.models.base_generation import Generation
 from vaultspeed_sdk.models.metadata.etl_generation_type import EtlGenerationTypes
@@ -21,13 +20,23 @@ def generate_code(system: System, project_name: str, dv_name: str, generation_ty
     # get requested releases or the latest one if none are specified
     if dv_release_name:
         dv_release = data_vault.get_release(dv_release_name)
+        if not dv_release.locked:
+            raise Exception("The selected Data Vault release is not yet locked and thus cannot be used to generate code")
     else:
-        dv_release = get_last(data_vault.releases)
+        locked_dv_releases = [rel for rel in data_vault.releases if rel.locked]
+        if not locked_dv_releases:
+            raise Exception("No locked Data Vault releases could be found in the selected project")
+        dv_release = sorted(locked_dv_releases, key=lambda x: x.date, reverse=True)[0]
 
     if bv_release_name:
         bv_release = dv_release.get_business_vault_release(bv_release_name)
+        if not dv_release.locked:
+            raise Exception("The selected Business Vault release is not yet locked and thus cannot be used to generate code")
     else:
-        bv_release = get_last(dv_release.business_vault_releases)
+        locked_bv_releases = [rel for rel in dv_release.business_vault_releases if rel.locked]
+        if not locked_bv_releases:
+            raise Exception("No locked Business Vault releases could be found in the selected DV release")
+        bv_release = sorted(locked_bv_releases, key=lambda x: x.release_date, reverse=True)[0]
 
     # Check if there are production releases. If there are, then we will generate code using the delta generation.
     # We only look at releases which occurred before the selected release in case the selected release is a production release.
@@ -36,19 +45,21 @@ def generate_code(system: System, project_name: str, dv_name: str, generation_ty
     all_generations = system.generations()
 
     generations: List[Generation] = []
-    etl_generation_id: int
 
     if not prod_releases:
-        # if there are no production releases before the selected release, then generate hte full DDL ETL
-        ddl_gen: Generation = None
-        etl_gen: Generation = None
+        # If there are no production releases before the selected release, then generate the full DDL ETL.
+        # Generation retrieval based on comments will be removed in 5.6 where the relevant identifiers will be added to the
+        # generations properties.
+        all_generations = system.generations()
+        bv_comment = f"BV release: {bv_release.name}({bv_release.release_number}) - Comment: {bv_release.comment} -"
+        dv_comment = f"DV_NAME: {data_vault.name} - Release: {dv_release.name}({dv_release.number}) - Comment: {dv_release.comment} -"
 
-        if not force_generation:
-            # check if there wa already a generation done before for the selected release that we can reuse
-            ddl_gen = get_last([gen for gen in all_generations if
-                                gen.gen_type == GenerationTypes.DDL and gen.bv_identifier == bv_release.identifier])
-            etl_gen = get_last([gen for gen in all_generations if
-                                gen.gen_type == GenerationTypes.ETL and gen.bv_identifier == bv_release.identifier])
+        ddl_gen = sorted(
+            [gen for gen in all_generations if gen.gen_type == GenerationTypes.DDL and bv_comment in gen.info and dv_comment in gen.info],
+            key=lambda x: x.time, reverse=True)[0]
+        etl_gen = sorted(
+            [gen for gen in all_generations if gen.gen_type == GenerationTypes.ETL and bv_comment in gen.info and dv_comment in gen.info],
+            key=lambda x: x.time, reverse=True)[0]
 
         if not ddl_gen:
             ddl_gen = system.generate_ddl(
@@ -65,17 +76,19 @@ def generate_code(system: System, project_name: str, dv_name: str, generation_ty
 
         generations.append(ddl_gen)
         generations.append(etl_gen)
-        etl_generation_id = etl_gen.identifier
 
     else:
-        last_prod_release = get_last(prod_releases)
-        prev_bv_release = get_last(last_prod_release.business_vault_releases)
+        last_prod_release = sorted(prod_releases, key=lambda x: x.date, reverse=True)[0]
+        prev_bv_release = sorted(last_prod_release.business_vault_releases, key=lambda x: x.date, reverse=True)[0]
         delta_gen: Generation = None
 
         if not force_generation:
             # check if there was already a generation done before for the selected release that we can reuse
-            delta_gen = get_last([gen for gen in all_generations if
-                                  gen.gen_type == GenerationTypes.DELTA and gen.bv_identifier == bv_release.identifier])
+            bv_comment = f"BV release: {bv_release.name}({bv_release.release_number}) - Comment: {bv_release.comment} -"
+            dv_comment = f"to: DV_NAME: {data_vault.name} - Release: {dv_release.name}({dv_release.number}) - Comment: {dv_release.comment} -"
+            delta_gen = sorted([gen for gen in all_generations if
+                                gen.gen_type == GenerationTypes.DELTA and bv_comment in gen.info and dv_comment in gen.info],
+                               key=lambda x: x.time, reverse=True)[0]
 
         if not delta_gen:
             delta_gen = system.generate_delta(
@@ -90,20 +103,23 @@ def generate_code(system: System, project_name: str, dv_name: str, generation_ty
     # Generate FMC code
     for flow in data_vault.fmc_flows:
         # check if there is a previous generation
-        fmc_generations = get_last([gen for gen in flow.generations if gen.etl_generation_id == etl_generation_id])
+        fmc_generations = sorted(
+            [gen for gen in flow.generations if gen.bv_release_name == bv_release.name and gen.dv_release_name == dv_release.name],
+            key=lambda x: x.generation_date, reverse=True)
 
         if fmc_generations and not force_generation:
             # reuse existing generation
-            fmc_gen = get_last([gen for gen in all_generations if
-                                gen.gen_type == GenerationTypes.FMC and gen.filename == fmc_generations.file_name])
+            fmc_gen = sorted([gen for gen in all_generations
+                              if gen.gen_type == GenerationTypes.FMC and gen.filename == fmc_generations[0].file_name],
+                             key=lambda x: x.time, reverse=True)[0]
             generations.append(fmc_gen)
 
         else:
             # generate FMC code for the ETL generation
-            etl_generations = [gen for gen in flow.etl_generations if gen.generation_id == etl_generation_id]
+            etl_generations = flow.etl_generations
             if etl_generations:
                 try:
-                    fmc_generation = flow.generate(get_last(etl_generations))
+                    fmc_generation = flow.generate(sorted(etl_generations, key=lambda x: x.generation_time, reverse=True)[0])
                     generations.append(fmc_generation)
                 except InternalServerError as e:
                     # If a flow is empty, and thus there is nothing to generate, then it raises an internal server error.
