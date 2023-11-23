@@ -6,10 +6,11 @@ from pathlib import Path
 import csv
 
 from vaultspeed_sdk.client import Client, UserPasswordAuthentication
+from vaultspeed_sdk.models.util import get_last
 from vaultspeed_sdk.system import System
 
 
-def main(project: str, dv: str, csv_path: Path, dv_release_number: str = None, bv_release_number: str = None):
+def main(project: str, dv: str, csv_path: Path, dv_release_name: str = None, bv_release_name: str = None):
     # initialise VaultSpeed connection
     logging.basicConfig(level=logging.INFO)
     auth = UserPasswordAuthentication(api_url=os.environ.get("VS_URL"), username=os.environ.get("VS_USER"), password=os.environ.get("VS_PASSWORD"))
@@ -19,15 +20,30 @@ def main(project: str, dv: str, csv_path: Path, dv_release_number: str = None, b
     data_vault = system.get_project(project).get_data_vault(name=dv)
 
     # get requested releases or the latest one if none are specified
-    if dv_release_number is not None:
-        dv_release = data_vault.get_release(dv_release_number)
+    if dv_release_name:
+        dv_release = data_vault.get_release(dv_release_name)
+        if not dv_release.locked:
+            raise Exception("The selected Data Vault release is not yet locked and thus cannot have an editable Business Vault")
+        print(f"Generating for select DV release: {dv_release.name}")
     else:
-        dv_release = sorted(data_vault.releases, key=lambda x: x.date, reverse=True)[0]
+        locked_dv_releases = [rel for rel in data_vault.releases if rel.locked]
+        if not locked_dv_releases:
+            raise Exception("No locked Data Vault releases could be found in the selected project")
 
-    if bv_release_number is not None:
-        bv_release = dv_release.get_business_vault_release(str(bv_release_number))
+        dv_release = get_last(locked_dv_releases)
+        print(f"Retrieved the last locked DV Release: {dv_release.name}")
+
+    if bv_release_name:
+        bv_release = dv_release.get_business_vault_release(bv_release_name)
+        if dv_release.locked:
+            raise Exception("The selected Business Vault release is already locked and thus cannot be modified")
+        print(f"importing for select BV release: {bv_release.name}")
     else:
-        bv_release = sorted(dv_release.business_vault_releases, key=lambda x: x.release_date, reverse=True)[0]
+        unlocked_bv_releases = [rel for rel in dv_release.business_vault_releases if not rel.locked]
+        if not unlocked_bv_releases:
+            raise Exception("No unlocked Business Vault releases could be found in the selected DV release")
+        bv_release = get_last(unlocked_bv_releases)
+        print(f"Retrieved the last unlocked BV Release: {bv_release.name}")
 
     with open(csv_path / "object_signatures.csv") as csvfile:
         object_signatures = csv.reader(csvfile, delimiter=",")
@@ -92,16 +108,16 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-d", "--dv",
-        help="Data Vault release number",
+        help="Data Vault release name",
         dest="dv_release_number",
         action="store"
     )
     parser.add_argument(
         "-b", "--bv",
-        help="Business Vault release number",
+        help="Business Vault release name",
         dest="bv_release_number",
         action="store"
     )
     args = parser.parse_args()
 
-    main(args.project, args.dv, args.csv_path, args.dv_release_number, args.bv_release_number)
+    main(args.project, args.dv, args.csv_path, args.dv_release_name, args.bv_release_name)

@@ -1,4 +1,3 @@
-# upload a new version of a template and generate example code for it
 import argparse
 import logging
 import os
@@ -6,11 +5,15 @@ from pathlib import Path
 
 from vaultspeed_sdk.client import Client, UserPasswordAuthentication
 from vaultspeed_sdk.models.metadata.etl_generation_type import EtlGenerationTypes
+from vaultspeed_sdk.models.util import get_last
 from vaultspeed_sdk.system import System
 
+"""
+This script can upload a new version of a template and generate example code for it.
+"""
 
 def main(project: str, dv: str, template_path: Path, object_name: str, generation_type: EtlGenerationTypes,
-         dv_release_number: str = None, bv_release_number: str = None, deploy_link: str = None):
+         dv_release_name: str = None, bv_release_name: str = None, deploy_link: str = None):
     # initialise VaultSpeed connection
     logging.basicConfig(level=logging.INFO)
     auth = UserPasswordAuthentication(api_url=os.environ.get("VS_URL"), username=os.environ.get("VS_USER"), password=os.environ.get("VS_PASSWORD"))
@@ -20,15 +23,30 @@ def main(project: str, dv: str, template_path: Path, object_name: str, generatio
     data_vault = system.get_project(project).get_data_vault(name=dv)
 
     # get requested releases or the latest one if none are specified
-    if dv_release_number is not None:
-        dv_release = data_vault.get_release(dv_release_number)
+    if dv_release_name:
+        dv_release = data_vault.get_release(dv_release_name)
+        if not dv_release.locked:
+            raise Exception("The selected Data Vault release is not yet locked and thus cannot be used to generate code")
+        print(f"Generating for select DV release: {dv_release.name}")
     else:
-        dv_release = sorted(data_vault.releases, key=lambda x: x.date, reverse=True)[0]
+        locked_dv_releases = [rel for rel in data_vault.releases if rel.locked]
+        if not locked_dv_releases:
+            raise Exception("No locked Data Vault releases could be found in the selected project")
 
-    if bv_release_number is not None:
-        bv_release = dv_release.get_business_vault_release(str(bv_release_number))
+        dv_release = get_last(locked_dv_releases)
+        print(f"Retrieved the last locked DV Release: {dv_release.name}")
+
+    if bv_release_name:
+        bv_release = dv_release.get_business_vault_release(bv_release_name)
+        if not dv_release.locked:
+            raise Exception("The selected Business Vault release is not yet locked and thus cannot be used to generate code")
+        print(f"Generating for select BV release: {bv_release.name}")
     else:
-        bv_release = sorted(dv_release.business_vault_releases, key=lambda x: x.release_date, reverse=True)[0]
+        locked_bv_releases = [rel for rel in dv_release.business_vault_releases if rel.locked]
+        if not locked_bv_releases:
+            raise Exception("No locked Business Vault releases could be found in the selected DV release")
+        bv_release = get_last(locked_bv_releases)
+        print(f"Retrieved the last locked BV Release: {bv_release.name}")
 
     template_file_name = template_path.stem
 
@@ -39,7 +57,8 @@ def main(project: str, dv: str, template_path: Path, object_name: str, generatio
         template = bv_release.get_template(template_file_name.rstrip("_etl"), check=False)
         template.template_etl = template_path.read_text()
 
-    example_code, generations = system.generate_template_example(bv_release=bv_release, template=template, base_object=template.dependencies[object_name],
+    example_code, generations = system.generate_template_example(bv_release=bv_release, template=template,
+                                                                 base_object=template.dependencies[object_name],
                                                                  etl_type=generation_type)
     print(example_code)
 
@@ -100,20 +119,20 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-d", "--dv",
-        help="Data Vault release number",
+        help="Data Vault release name",
         dest="dv_release_number",
         action="store"
     )
     parser.add_argument(
         "-b", "--bv",
-        help="Business Vault release number",
+        help="Business Vault release name",
         dest="bv_release_number",
         action="store"
     )
     args = parser.parse_args()
 
-    main(args.project, args.dv, args.template_path, args.object_name, EtlGenerationTypes[args.generation_type], args.dv_release_number, args.bv_release_number,
-         args.deploy_link)
+    main(args.project, args.dv, args.template_path, args.object_name, EtlGenerationTypes[args.generation_type], args.dv_release_name,
+         args.bv_release_name, args.deploy_link)
 
 
 """
